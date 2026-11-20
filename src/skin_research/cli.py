@@ -76,9 +76,103 @@ def cmd_doctor(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0 if ok else 1
 
 
+# --------------------------------------------------------------------------- data
+def cmd_download_data(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Download a registered public dataset (asks before large downloads)."""
+    from skin_research.data.download import DATASETS, download_dataset, human_size
+
+    if args.list:
+        for key, src in DATASETS.items():
+            print(f"  {key:<16} {human_size(src.total_bytes):>9}  {src.description}")
+        return 0
+    key = args.dataset or cfg.dataset.name
+    target = download_dataset(key, cfg.paths.raw_dir, assume_yes=args.yes)
+    print(f"Dataset files are in {target}\nNext: skin-research prepare-data --dataset {key}")
+    return 0
+
+
+def cmd_prepare_data(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Convert raw dataset metadata into the canonical CSV used by every command."""
+    import pandas as pd
+
+    from skin_research.data import metadata as md
+    from skin_research.data.download import DATASETS
+
+    output = cfg.resolve(args.output) if args.output else cfg.dataset.metadata_csv
+    if args.ham10000_metadata:
+        df = md.convert_ham10000_metadata(cfg.resolve(args.ham10000_metadata))
+        print("NOTE: the default model was trained on HAM10000; metrics on it are not held-out results.")
+    else:
+        key = args.dataset or cfg.dataset.name
+        if key not in DATASETS:
+            raise ValueError(f"Unknown dataset '{key}'. Use --ham10000-metadata for HAM10000 or write your own CSV.")
+        src = DATASETS[key]
+        base = cfg.paths.raw_dir / key
+        groupings = base / src.lesion_groupings_csv if src.lesion_groupings_csv else None
+        df = md.convert_isic2018_groundtruth(base / src.groundtruth_csv, lesion_groupings_csv=groupings)
+        if src.leakage_warning:
+            print(f"WARNING: {src.leakage_warning}")
+    if args.fetch_lesion_ids:
+        ids = md.fetch_isic_lesion_ids(df["image_id"].tolist(), cfg.paths.processed_dir / "isic_api_cache.csv")
+        found = ids.set_index("image_id")
+        df["lesion_id"] = df["lesion_id"].fillna(df["image_id"].map(found["lesion_id"]))
+        df["patient_id"] = df["patient_id"].fillna(df["image_id"].map(found["patient_id"]))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output, index=False)
+    print(f"Wrote {len(df)} rows → {output}")
+    print(pd.Series(df["label"]).value_counts().to_string())
+    print(f"lesion_id available for {int(df['lesion_id'].notna().sum())}/{len(df)} rows")
+    return 0
+
+
+def cmd_validate_data(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Validate metadata and images: missing files, corrupt images, labels, duplicates."""
+    import json
+
+    from skin_research.data.metadata import read_metadata_csv
+    from skin_research.data.validation import validate_dataset
+
+    df = read_metadata_csv(cfg.dataset.metadata_csv)
+    report = validate_dataset(df, cfg.dataset.image_root, cfg.dataset.labels)
+    out = cfg.paths.processed_dir / f"{cfg.dataset.name}_validation.csv"
+    cols = ["image_id", "image_path", "label", "lesion_id", "exists", "readable", "label_valid",
+            "width", "height", "format", "sha256", "error", "is_valid"]
+    report.table[cols].to_csv(out, index=False)
+    print(json.dumps(report.summary(), indent=2, ensure_ascii=False))
+    print(f"Per-image validation table → {out}")
+    return 0 if report.ok else 1
+
+
+def cmd_dataset_info(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Print class distribution, identifier coverage and split information."""
+    import json
+
+    from skin_research.data.loader import dataset_statistics, prepare_dataset
+    from skin_research.data.metadata import LABEL_DESCRIPTIONS
+
+    prepared = prepare_dataset(cfg, check_near_duplicates=False)
+    stats = dataset_statistics(prepared.full, cfg.dataset.labels)
+    stats["split_level"] = prepared.split_level
+    stats["split_counts"] = prepared.full["split"].value_counts().to_dict()
+    stats["evaluation_images"] = len(prepared.table)
+    print(f"Dataset: {cfg.dataset.name}  ({cfg.dataset.metadata_csv})\n")
+    for label in cfg.dataset.labels:
+        print(f"  {label:<6} {stats['class_counts'][label]:>6}  {100 * stats['class_fractions'][label]:5.1f}%  "
+              f"{LABEL_DESCRIPTIONS.get(label, '')}")
+    print()
+    print(json.dumps({k: v for k, v in stats.items() if k not in {"class_counts", "class_fractions"}}, indent=2))
+    out = cfg.paths.processed_dir / f"{cfg.dataset.name}_stats.json"
+    out.write_text(json.dumps(stats, indent=2))
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
+    "download-data": (cmd_download_data, "Download a public dataset from the official ISIC archive."),
+    "prepare-data": (cmd_prepare_data, "Convert raw dataset metadata into the canonical CSV."),
+    "validate-data": (cmd_validate_data, "Validate metadata and images (missing, corrupt, labels, duplicates)."),
+    "dataset-info": (cmd_dataset_info, "Show dataset statistics, class balance and split information."),
 }
 
 
@@ -98,7 +192,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
-    """Per-command options (extended as commands are added)."""
+    """Per-command options."""
+    if name == "download-data":
+        sp.add_argument("--dataset", help="Dataset key (default: dataset.name from config).")
+        sp.add_argument("--list", action="store_true", help="List available datasets and sizes.")
+        sp.add_argument("-y", "--yes", action="store_true", help="Do not ask before large downloads.")
+    elif name == "prepare-data":
+        sp.add_argument("--dataset", help="Registered dataset key (default: dataset.name).")
+        sp.add_argument("--ham10000-metadata", help="Path to HAM10000_metadata.csv (manual download).")
+        sp.add_argument("--output", help="Output CSV (default: dataset.metadata_csv).")
+        sp.add_argument("--fetch-lesion-ids", action="store_true",
+                        help="Look up lesion_id/patient_id per image via the public ISIC Archive API.")
 
 
 def main(argv: list[str] | None = None) -> int:
