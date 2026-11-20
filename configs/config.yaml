@@ -1,0 +1,106 @@
+# ---------------------------------------------------------------------------
+# Skin image quality research — experiment configuration.
+# All relative paths are resolved against the project root (the folder that
+# contains pyproject.toml), so the project runs from any working directory.
+# A copy of this file is saved with every experiment run for reproducibility.
+# ---------------------------------------------------------------------------
+
+seed: 42
+
+paths:
+  raw_dir: data/raw                # downloaded datasets (read-only after download)
+  processed_dir: data/processed    # canonical metadata CSVs, splits
+  variations_dir: data/variations  # generated degraded / enhanced images
+  sample_dir: data/sample          # tiny smoke-test sample
+  models_dir: models               # Hugging Face download cache for weights
+  outputs_dir: outputs             # predictions, charts, reports, logs
+
+dataset:
+  # Canonical CSV with columns: image_path, label, [image_id, lesion_id, patient_id]
+  # Created by `skin-research prepare-data`. image_path is relative to image_root.
+  name: isic2018_val
+  metadata_csv: data/processed/isic2018_val_metadata.csv
+  image_root: data/raw/isic2018_val/ISIC2018_Task3_Validation_Input
+  # Canonical labels (HAM10000 / ISIC 2018 `dx` codes).
+  labels: [akiec, bcc, bkl, df, mel, nv, vasc]
+  max_images: null        # integer → stratified, group-aware subsample for quick runs
+  split:
+    # The model is only evaluated (never trained), so by default every image is
+    # in the evaluation split. Set test_fraction < 1 to hold out a "dev" split
+    # (e.g. for tuning enhancement parameters) — splitting is by group_column
+    # when available so one lesion never appears in both splits.
+    test_fraction: 1.0
+    group_column: lesion_id     # falls back to patient_id, then image-level
+    evaluate_split: test
+
+model:
+  adapter: efficientnet_isic2018
+  repo_id: adeIaide/skin-lesion-7class-efficientnet
+  revision: b5ebe73c3b89baa90ee4f991afa318385414a973   # pinned Hub commit
+  weights_file: model.safetensors
+  config_file: config.json
+  device: cpu
+  batch_size: 16
+  num_threads: 4          # torch CPU threads; keep below core count
+  # Model output label → dataset canonical label.
+  label_map: {MEL: mel, NV: nv, BCC: bcc, AKIEC: akiec, BKL: bkl, DF: df, VASC: vasc}
+
+quality:
+  # Blur/sharpness are resolution dependent; images are resized so their longest
+  # side equals this value before computing them, making scores comparable.
+  analysis_long_side: 512
+  # Thresholds used only to FLAG images whose label usefulness is questionable.
+  # They are heuristics, not validated clinical quality criteria.
+  flags:
+    min_laplacian_var: 15.0
+    min_brightness: 0.12
+    max_brightness: 0.92
+    min_rms_contrast: 0.04
+    max_clipped_fraction: 0.25
+    min_short_side: 64
+
+degradations:
+  gaussian_blur:     {mild: {sigma: 1.5}, moderate: {sigma: 3.0}, severe: {sigma: 6.0}}
+  motion_blur:       {mild: {kernel_size: 9, angle: 0}, moderate: {kernel_size: 17, angle: 45}, severe: {kernel_size: 31, angle: 90}}
+  underexposure:     {mild: {gamma: 1.5, gain: 0.85}, moderate: {gamma: 2.0, gain: 0.65}, severe: {gamma: 2.8, gain: 0.45}}
+  overexposure:      {mild: {gain: 1.25}, moderate: {gain: 1.6}, severe: {gain: 2.1}}
+  low_contrast:      {mild: {factor: 0.7}, moderate: {factor: 0.45}, severe: {factor: 0.25}}
+  low_resolution:    {mild: {scale: 0.5}, moderate: {scale: 0.25}, severe: {scale: 0.125}}
+  jpeg_compression:  {mild: {quality: 40}, moderate: {quality: 15}, severe: {quality: 5}}
+  gaussian_noise:    {mild: {sigma: 8}, moderate: {sigma: 20}, severe: {sigma: 40}}
+
+enhancements:
+  brightness_correction: {target_mean: 0.55, max_gamma: 3.0}
+  contrast_stretch:      {low_percentile: 1.0, high_percentile: 99.0}
+  clahe:                 {clip_limit: 2.0, tile_grid_size: 8}
+  sharpen:               {sigma: 1.5, amount: 1.0}
+  denoise:               {h: 7, h_color: 7, template_window: 7, search_window: 21}
+  deblur:                {psf_sigma: 3.0, iterations: 20}   # Richardson–Lucy, Gaussian PSF
+
+experiment:
+  name: isic2018_val_quality
+  save_images: true        # false → variations generated in memory only (manifest kept)
+  image_format: png        # lossless, so saving never adds compression artefacts
+  degradations: [gaussian_blur, motion_blur, underexposure, overexposure,
+                 low_contrast, low_resolution, jpeg_compression, gaussian_noise]
+  severities: [mild, moderate, severe]
+  enhancements_on_original: [brightness_correction, contrast_stretch, clahe, sharpen, denoise]
+  # Condition I: enhancement applied after degradation  [degradation, severity, enhancement]
+  degrade_then_enhance:
+    - [gaussian_blur, moderate, sharpen]
+    - [gaussian_blur, moderate, deblur]
+    - [motion_blur, moderate, sharpen]
+    - [underexposure, moderate, brightness_correction]
+    - [underexposure, moderate, clahe]
+    - [overexposure, moderate, brightness_correction]
+    - [low_contrast, moderate, contrast_stretch]
+    - [low_contrast, moderate, clahe]
+    - [low_resolution, moderate, sharpen]
+    - [gaussian_noise, moderate, denoise]
+    - [jpeg_compression, moderate, denoise]
+
+evaluation:
+  bootstrap_resamples: 1000
+  confidence_level: 0.95
+  calibration_bins: 10
+  primary_metric: balanced_accuracy

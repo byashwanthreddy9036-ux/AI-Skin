@@ -1,0 +1,51 @@
+[project]
+name = "skin-research"
+version = "0.1.0"
+description = "Research system: does skin lesion image quality affect a pretrained classifier's accuracy and reliability?"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.4,<3",
+    "torchvision>=0.19,<1",
+    "safetensors>=0.4,<1",
+    "huggingface-hub>=0.25,<2",
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<3",
+    "pillow>=10.4,<13",
+    "opencv-python-headless>=4.10,<5",
+    "scikit-learn>=1.5,<2",
+    "scipy>=1.13,<2",
+    "matplotlib>=3.9,<4",
+    "pyyaml>=6.0,<7",
+]
+
+[project.scripts]
+skin-research = "skin_research.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/skin_research"]
+
+# CPU-only PyTorch wheels (avoids downloading ~2 GB of CUDA libraries).
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "model: tests that need the downloaded pretrained model weights",
+    "dataset: tests that need the downloaded ISIC dataset",
+]
