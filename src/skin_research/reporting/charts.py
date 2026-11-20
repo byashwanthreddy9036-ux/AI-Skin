@@ -126,8 +126,9 @@ def enhancement_comparison(summary: pd.DataFrame, restoration: pd.DataFrame, met
 
     enh = summary[summary["group"].isin(["original", "enhancement"])]
     labels = [c.replace("enhance__", "") for c in enh["condition"]]
-    ax1.bar(range(len(enh)), enh[metric], color=[GROUP_COLORS[g] for g in enh["group"]], width=0.7,
-            yerr=[enh[metric] - enh[f"{metric}_ci_low"], enh[f"{metric}_ci_high"] - enh[metric]],
+    val = enh[metric].to_numpy(float)
+    ax1.bar(range(len(enh)), val, color=[GROUP_COLORS[g] for g in enh["group"]], width=0.7,
+            yerr=[val - enh[f"{metric}_ci_low"].to_numpy(float), enh[f"{metric}_ci_high"].to_numpy(float) - val],
             error_kw={"elinewidth": 0.8, "ecolor": INK_2}, edgecolor=SURFACE)
     ax1.set_xticks(range(len(enh)), labels, rotation=35, ha="right")
     ax1.set_ylim(0, 1)

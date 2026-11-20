@@ -435,6 +435,23 @@ def cmd_evaluate(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """(Re)generate the Markdown research report from saved predictions."""
+    from skin_research.evaluation.comparison import evaluate_conditions
+    from skin_research.pipeline import charts_dir, make_charts, save_evaluation
+    from skin_research.reporting.report import write_report
+
+    _, predictions, run_info = _load_run(cfg)
+    ev = cfg.evaluation
+    result = evaluate_conditions(predictions, cfg.dataset.labels, n_resamples=ev.bootstrap_resamples,
+                                 level=ev.confidence_level, n_bins=ev.calibration_bins, seed=cfg.seed,
+                                 primary=ev.primary_metric)
+    outputs = {"metrics": save_evaluation(cfg, result), "charts": make_charts(cfg, predictions, result)}
+    path = write_report(cfg, predictions, result, run_info, outputs)
+    print(f"Report → {path}\nCharts → {charts_dir(cfg)}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -448,6 +465,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "predict": (cmd_predict, "Run the pretrained model on images or on the variations manifest."),
     "experiment": (cmd_experiment, "Run the full experiment (variations, inference, evaluation, report)."),
     "evaluate": (cmd_evaluate, "Compute metrics, CIs, paired comparisons and charts from saved predictions."),
+    "report": (cmd_report, "Generate the Markdown research report from saved predictions."),
     "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 

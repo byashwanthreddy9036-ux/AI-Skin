@@ -102,7 +102,7 @@ def make_charts(cfg: AppConfig, predictions: pd.DataFrame, result: EvaluationRes
         result.details["per_condition"]["original"]["confusion_matrix"], labels, "Confusion matrix — original",
         out / "07_confusion_original.png"))
     example = pick_example_image(predictions)
-    if example:
+    if example and "output_path" in predictions and predictions["output_path"].notna().any():
         grid_conditions = ["original"] + [c for c in conditions if c.endswith("__severe")][:4] + \
                           [c for c in conditions if c.startswith("enhance__")][:3]
         add("example", charts.example_grid(predictions, example, grid_conditions, out / "08_example.png"))
