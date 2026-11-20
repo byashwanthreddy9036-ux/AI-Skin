@@ -75,14 +75,25 @@ def build_conditions(cfg: AppConfig) -> list[Condition]:
 
 
 def select_conditions(conditions: list[Condition], names: list[str] | None) -> list[Condition]:
-    """Filter by exact name or prefix (e.g. ``gaussian_blur`` selects all its severities)."""
+    """Filter conditions; ``original`` (the baseline) is always kept.
+
+    A name that exactly matches a condition selects only that condition;
+    otherwise it is treated as a prefix (``gaussian_blur`` → all its severities
+    and combinations).
+    """
     if not names:
         return conditions
-    chosen = [c for c in conditions if c.name == ORIGINAL or any(c.name == n or c.name.startswith(n) for n in names)]
-    unknown = [n for n in names if not any(c.name == n or c.name.startswith(n) for c in conditions)]
+    all_names = {c.name for c in conditions}
+    wanted: set[str] = {ORIGINAL}
+    unknown = []
+    for n in names:
+        matches = {n} if n in all_names else {c for c in all_names if c.startswith(n)}
+        if not matches:
+            unknown.append(n)
+        wanted |= matches
     if unknown:
         raise ValueError(f"Unknown condition(s) {unknown}. Known: {', '.join(c.name for c in conditions)}")
-    return chosen
+    return [c for c in conditions if c.name in wanted]
 
 
 def _prepare_condition_dirs(root: Path, conditions: list[Condition], fmt: str, force: bool) -> None:

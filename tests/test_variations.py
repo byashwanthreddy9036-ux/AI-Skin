@@ -56,3 +56,11 @@ def test_regeneration_is_deterministic_and_guards_changed_params(tmp_config):
 def test_unknown_condition_rejected(tmp_config):
     with pytest.raises(ValueError):
         select_conditions(build_conditions(tmp_config), ["fog"])
+
+
+def test_exact_name_does_not_pull_in_combinations(tmp_config):
+    conds = build_conditions(tmp_config)
+    exact = {c.name for c in select_conditions(conds, ["gaussian_blur__moderate"])}
+    assert exact == {"original", "gaussian_blur__moderate"}
+    prefix = {c.name for c in select_conditions(conds, ["gaussian_blur"])}
+    assert {"gaussian_blur__mild", "gaussian_blur__severe", "gaussian_blur__moderate+sharpen"} <= prefix

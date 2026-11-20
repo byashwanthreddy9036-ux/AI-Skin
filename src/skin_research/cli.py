@@ -299,8 +299,10 @@ def cmd_predict(args: argparse.Namespace, cfg: AppConfig) -> int:
                                     "or pass image paths to predict.")
         manifest = pd.read_csv(manifest_file)
         if args.conditions:
-            manifest = manifest[manifest["condition"].apply(lambda c: c == "original" or any(
-                c == n or c.startswith(n) for n in args.conditions))]
+            from skin_research.preprocessing.variations import build_conditions, select_conditions
+
+            keep = {c.name for c in select_conditions(build_conditions(cfg), args.conditions)}
+            manifest = manifest[manifest["condition"].isin(keep)]
         manifest = manifest[manifest["output_path"].notna()]
         print(f"Predicting {len(manifest)} images from {manifest_file}")
         df = predictor.predict_paths([Path(p) for p in manifest["output_path"]], manifest.to_dict("records"))
