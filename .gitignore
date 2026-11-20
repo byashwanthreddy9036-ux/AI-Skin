@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# Environment / secrets
+.env
+
+# Large or generated data: never commit datasets, model weights or run outputs
+data/raw/*
+data/processed/*
+data/variations/*
+!data/**/.gitkeep
+models/*
+!models/README.md
+outputs/**/*
+!outputs/**/.gitkeep
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.zip
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
