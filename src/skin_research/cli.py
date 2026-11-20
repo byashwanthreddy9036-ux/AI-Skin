@@ -166,6 +166,54 @@ def cmd_dataset_info(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- quality
+def cmd_assess_quality(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Compute quality metrics for dataset images (or given files) and write a report."""
+    from pathlib import Path
+
+    from skin_research.quality.assessment import assess_paths, flag_counts, summarize_quality
+
+    if args.images:
+        paths = []
+        for item in args.images:
+            p = Path(item)
+            paths += sorted(q for q in p.iterdir() if q.suffix.lower() in {".jpg", ".jpeg", ".png"}) if p.is_dir() else [p]
+        ids, labels, name = [p.stem for p in paths], None, "custom"
+    else:
+        from skin_research.data.loader import prepare_dataset
+
+        prepared = prepare_dataset(cfg, check_near_duplicates=False)
+        paths, ids, name = prepared.paths, prepared.table["image_id"].tolist(), cfg.dataset.name
+        labels = prepared.table["label"].tolist()
+    if not paths:
+        raise ValueError("No images to assess.")
+    df = assess_paths(paths, cfg.quality, ids)
+    if labels is not None:
+        df.insert(1, "label", labels)
+    out_dir = cfg.paths.reports_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv = out_dir / f"quality_{name}.csv"
+    df.to_csv(csv, index=False)
+    summary = summarize_quality(df[df["valid"]])
+    flags = flag_counts(df)
+    lines = [f"# Image quality report — {name}", "",
+             f"Images assessed: {len(df)} (valid: {int(df['valid'].sum())})", "",
+             "Metrics are classical no-reference heuristics. Blur/sharpness scores are computed after resizing "
+             f"to {cfg.quality.get('analysis_long_side', 512)} px on the long side and are only comparable "
+             "between images of similar content; no single score is a universal quality verdict.", "",
+             "## Metric distribution", "", summary.round(4).to_markdown(), "",
+             "## Heuristic quality flags", ""]
+    lines += [f"- {k}: {v}" for k, v in flags.items()] or ["- none raised"]
+    if labels is not None:
+        lines += ["", "## Mean metrics by class", "",
+                  summarize_quality(df[df["valid"]], by="label").round(4).to_markdown()]
+    md = out_dir / f"quality_{name}.md"
+    md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(summary.round(4).to_string())
+    print(f"\nFlags: {flags or 'none'}\nPer-image table → {csv}\nReport → {md}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -173,6 +221,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "prepare-data": (cmd_prepare_data, "Convert raw dataset metadata into the canonical CSV."),
     "validate-data": (cmd_validate_data, "Validate metadata and images (missing, corrupt, labels, duplicates)."),
     "dataset-info": (cmd_dataset_info, "Show dataset statistics, class balance and split information."),
+    "assess-quality": (cmd_assess_quality, "Compute image quality metrics and write a quality report."),
 }
 
 
@@ -203,6 +252,8 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--output", help="Output CSV (default: dataset.metadata_csv).")
         sp.add_argument("--fetch-lesion-ids", action="store_true",
                         help="Look up lesion_id/patient_id per image via the public ISIC Archive API.")
+    elif name == "assess-quality":
+        sp.add_argument("images", nargs="*", help="Image files or folders (default: the configured dataset).")
 
 
 def main(argv: list[str] | None = None) -> int:
