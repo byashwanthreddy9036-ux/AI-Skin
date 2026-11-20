@@ -151,6 +151,7 @@ def _build(cls: type, values: dict[str, Any], section: str) -> Any:
 
 def config_from_dict(data: dict[str, Any], root: Path, source_file: Path | None = None) -> AppConfig:
     """Build an :class:`AppConfig` from an already-parsed mapping."""
+    raw = copy.deepcopy(data)  # pristine copy for snapshots; `data` is consumed below
     data = copy.deepcopy(data)
     root = root.resolve()
 
@@ -206,7 +207,7 @@ def config_from_dict(data: dict[str, Any], root: Path, source_file: Path | None 
         enhancements=enhancements,
         experiment=experiment,
         evaluation=evaluation,
-        raw=data,
+        raw=raw,
     )
 
 

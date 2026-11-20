@@ -378,6 +378,21 @@ def cmd_demo(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- experiment
+def cmd_experiment(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Run the full experiment: data → variations → inference → evaluation → report."""
+    from skin_research.experiment import run_experiment
+
+    _apply_overrides(args, cfg)
+    info = run_experiment(cfg, args.conditions, force=args.force, evaluate=not args.no_evaluate)
+    print(f"\nExperiment '{info['experiment']}': {info['n_images']} images × {info['n_conditions']} conditions "
+          f"= {info['n_predictions']} predictions in {info['total_seconds']:.0f} s "
+          f"({info['inference_images_per_second']} img/s inference)")
+    for key, value in (info.get("outputs") or {}).items():
+        print(f"  {key}: {value}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -389,6 +404,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "generate-variations": (cmd_generate_variations, "Generate degraded/enhanced images with a traceability manifest."),
     "download-model": (cmd_download_model, "Download and verify the pretrained model weights (~16 MB)."),
     "predict": (cmd_predict, "Run the pretrained model on images or on the variations manifest."),
+    "experiment": (cmd_experiment, "Run the full experiment (variations, inference, evaluation, report)."),
     "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 
@@ -426,6 +442,8 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--force", action="store_true", help="Regenerate variation folders whose parameters changed.")
     if name in {"predict", "experiment"}:
         sp.add_argument("--batch-size", type=int, help="Override model.batch_size.")
+    if name == "experiment":
+        sp.add_argument("--no-evaluate", action="store_true", help="Only generate and predict.")
     if name == "predict":
         sp.add_argument("images", nargs="*", help="Image files (default: all images in the manifest).")
     if name == "demo":
