@@ -40,8 +40,8 @@ model:
   weights_file: model.safetensors
   config_file: config.json
   device: cpu
-  batch_size: 16
-  num_threads: 4          # torch CPU threads; keep below core count
+  batch_size: 8           # benchmarked on 6-core WSL2: batch 8 + 3 threads was fastest (10.6 img/s)
+  num_threads: 3          # torch CPU threads; more threads were SLOWER under WSL2
   # Model output label → dataset canonical label.
   label_map: {MEL: mel, NV: nv, BCC: bcc, AKIEC: akiec, BKL: bkl, DF: df, VASC: vasc}
 

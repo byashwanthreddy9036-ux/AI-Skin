@@ -248,6 +248,136 @@ def cmd_generate_variations(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- model
+def _load_predictor(cfg: AppConfig):
+    from skin_research.inference.model_loader import check_label_compatibility, load_model
+    from skin_research.inference.predictor import Predictor
+
+    adapter = load_model(cfg)
+    compat = check_label_compatibility(adapter.labels, cfg.model.label_map, cfg.dataset.labels)
+    if not compat.ok:
+        log.warning("Label mapping incompatible — predictions are saved but metrics will be refused: %s",
+                    "; ".join(compat.problems))
+    return adapter, Predictor(adapter, cfg.model.label_map, cfg.dataset.labels, cfg.model.batch_size), compat
+
+
+def cmd_download_model(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Download and verify the configured pretrained model (~16 MB)."""
+    import json
+
+    from skin_research.inference.model_loader import check_label_compatibility, load_model
+
+    adapter = load_model(cfg)
+    meta = adapter.metadata()
+    compat = check_label_compatibility(adapter.labels, cfg.model.label_map, cfg.dataset.labels)
+    print(json.dumps({k: meta[k] for k in ("repo_id", "revision", "architecture", "input_size", "parameters",
+                                           "labels", "weights_sha256", "license")}, indent=2))
+    print(f"Label mapping to dataset: {'OK' if compat.ok else compat.problems}")
+    return 0 if compat.ok else 1
+
+
+def cmd_predict(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Run the model on given images, or on every image in the variations manifest."""
+    from pathlib import Path
+
+    import pandas as pd
+
+    from skin_research.preprocessing.variations import manifest_path
+
+    _apply_overrides(args, cfg)
+    _, predictor, _ = _load_predictor(cfg)
+    if args.images:
+        paths = [Path(p) for p in args.images]
+        df = predictor.predict_paths(paths)
+        cols = ["path", "predicted_label", "confidence", "margin"]
+        print(df[cols + [f"prob_{l}" for l in cfg.dataset.labels]].round(4).to_string(index=False))
+        out = cfg.paths.predictions_dir / "adhoc_predictions.csv"
+    else:
+        manifest_file = manifest_path(cfg)
+        if not manifest_file.is_file():
+            raise FileNotFoundError(f"No manifest at {manifest_file}. Run generate-variations first, "
+                                    "or pass image paths to predict.")
+        manifest = pd.read_csv(manifest_file)
+        if args.conditions:
+            manifest = manifest[manifest["condition"].apply(lambda c: c == "original" or any(
+                c == n or c.startswith(n) for n in args.conditions))]
+        manifest = manifest[manifest["output_path"].notna()]
+        print(f"Predicting {len(manifest)} images from {manifest_file}")
+        df = predictor.predict_paths([Path(p) for p in manifest["output_path"]], manifest.to_dict("records"))
+        out = cfg.paths.predictions_dir / cfg.experiment.name / "predictions.csv"
+        if "correct" in df:
+            print(df.groupby("condition", sort=False)["correct"].mean().round(3).to_string())
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out, index=False)
+    print(f"\n{len(df)} predictions ({predictor.throughput:.1f} img/s) → {out}")
+    return 0
+
+
+def cmd_demo(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Milestone demo: one real image → original, blurred, poorly lit and enhanced versions → predictions."""
+    import shutil
+    from pathlib import Path
+
+    import pandas as pd
+
+    from skin_research.data.loader import load_image, save_image
+    from skin_research.data.metadata import read_metadata_csv
+    from skin_research.preprocessing.degradation import apply_degradation
+    from skin_research.preprocessing.enhancement import apply_enhancement
+    from skin_research.quality.assessment import assess_array
+
+    if args.image:
+        source, label, image_id = Path(args.image), args.label, Path(args.image).stem
+    else:
+        meta = read_metadata_csv(cfg.dataset.metadata_csv)
+        row = meta[meta["image_id"] == args.image_id].iloc[0] if args.image_id else meta.iloc[0]
+        source, label, image_id = cfg.dataset.image_root / row["image_path"], row["label"], row["image_id"]
+    sample = cfg.paths.sample_dir / source.name
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    if not sample.exists():
+        shutil.copy2(source, sample)  # read-only copy for smoke tests; the original stays untouched
+
+    original = load_image(sample)
+    variants = {
+        "original": original,
+        "gaussian_blur_moderate": apply_degradation(original, "gaussian_blur", cfg.degradations["gaussian_blur"]["moderate"]),
+        "poor_lighting_moderate": apply_degradation(original, "underexposure", cfg.degradations["underexposure"]["moderate"]),
+        "sharpened": apply_enhancement(original, "sharpen", cfg.enhancements["sharpen"]),
+        "clahe": apply_enhancement(original, "clahe", cfg.enhancements["clahe"]),
+    }
+    out_dir = cfg.paths.outputs_dir / "demo" / image_id
+    if out_dir.exists():
+        shutil.rmtree(out_dir)  # generated demo output only
+    records = []
+    for name, img in variants.items():
+        path = sample if name == "original" else save_image(img, out_dir / name)
+        q = assess_array(img, cfg.quality)
+        records.append({"image_id": image_id, "label": label, "version": name, "path": str(path),
+                        "brightness": q["brightness"], "rms_contrast": q["rms_contrast"],
+                        "laplacian_var": q["laplacian_var"], "quality_flags": q["quality_flags"]})
+    adapter, predictor, _ = _load_predictor(cfg)
+    frames = list(predictor.predict_stream(zip(records, variants.values())))
+    df = pd.concat(frames, ignore_index=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv = out_dir / "demo_predictions.csv"
+    df.to_csv(csv, index=False)
+
+    print(f"Image {image_id}  ground truth: {label}  model: {adapter.cfg.repo_id}\n")
+    print(df[["version", "brightness", "rms_contrast", "laplacian_var", "predicted_label", "confidence"]]
+          .round(3).to_string(index=False))
+    print("\nClass probabilities:")
+    print(df.set_index("version")[[f"prob_{l}" for l in cfg.dataset.labels]].round(3)
+          .rename(columns=lambda c: c[5:]).to_string())
+    base = df.iloc[0]
+    print("\nComparison with original:")
+    for _, r in df.iloc[1:].iterrows():
+        change = "SAME class" if r.predicted_label == base.predicted_label else f"CHANGED → {r.predicted_label}"
+        print(f"  {r.version:<24} {change:<18} p(true={label}) {base[f'prob_{label}']:.3f} → {r[f'prob_{label}']:.3f}" if label
+              else f"  {r.version:<24} {change}")
+    print(f"\nSaved → {csv}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -257,6 +387,9 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "dataset-info": (cmd_dataset_info, "Show dataset statistics, class balance and split information."),
     "assess-quality": (cmd_assess_quality, "Compute image quality metrics and write a quality report."),
     "generate-variations": (cmd_generate_variations, "Generate degraded/enhanced images with a traceability manifest."),
+    "download-model": (cmd_download_model, "Download and verify the pretrained model weights (~16 MB)."),
+    "predict": (cmd_predict, "Run the pretrained model on images or on the variations manifest."),
+    "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 
 
@@ -291,6 +424,14 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--max-images", type=int, help="Approximate image limit: stratified and lesion-aware, keeps ≥1 lesion per class, so it can exceed N.")
         sp.add_argument("--conditions", nargs="+", help="Only these conditions (name or prefix); original is always kept.")
         sp.add_argument("--force", action="store_true", help="Regenerate variation folders whose parameters changed.")
+    if name in {"predict", "experiment"}:
+        sp.add_argument("--batch-size", type=int, help="Override model.batch_size.")
+    if name == "predict":
+        sp.add_argument("images", nargs="*", help="Image files (default: all images in the manifest).")
+    if name == "demo":
+        sp.add_argument("--image", help="Any image file (default: first image of the configured dataset).")
+        sp.add_argument("--label", help="Ground-truth label for --image, if known.")
+        sp.add_argument("--image-id", help="Pick a dataset image by id, e.g. ISIC_0034329.")
     if name == "assess-quality":
         sp.add_argument("images", nargs="*", help="Image files or folders (default: the configured dataset).")
 

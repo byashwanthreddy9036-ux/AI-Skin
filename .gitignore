@@ -16,6 +16,7 @@ dist/
 data/raw/*
 data/processed/*
 data/variations/*
+data/sample/*
 !data/**/.gitkeep
 models/*
 !models/README.md
