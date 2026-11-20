@@ -214,6 +214,40 @@ def cmd_assess_quality(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- variations
+def _apply_overrides(args: argparse.Namespace, cfg: AppConfig) -> None:
+    """Command-line overrides shared by the pipeline commands."""
+    if getattr(args, "max_images", None):
+        cfg.dataset.max_images = args.max_images
+        cfg.raw["dataset"]["max_images"] = args.max_images
+    if getattr(args, "batch_size", None):
+        cfg.model.batch_size = args.batch_size
+        cfg.raw["model"]["batch_size"] = args.batch_size
+
+
+def cmd_generate_variations(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Generate degraded and enhanced images with a traceability manifest."""
+    from skin_research.data.loader import prepare_dataset
+    from skin_research.preprocessing.variations import (
+        build_conditions, generate_variations, manifest_path, select_conditions)
+
+    _apply_overrides(args, cfg)
+    prepared = prepare_dataset(cfg, check_near_duplicates=False)
+    conditions = select_conditions(build_conditions(cfg), args.conditions)
+    print(f"Generating {len(conditions)} condition(s) for {len(prepared.table)} image(s)")
+    manifest = generate_variations(cfg, prepared.table, conditions, force=args.force)
+    out = manifest_path(cfg)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    manifest.to_csv(out, index=False)
+    summary = manifest.groupby("condition", sort=False).agg(
+        images=("image_id", "size"), brightness=("brightness", "mean"), contrast=("rms_contrast", "mean"),
+        laplacian_var=("laplacian_var", "mean"),
+        questionable=("label_usefulness", lambda s: int((s == "questionable").sum())))
+    print(summary.round(3).to_string())
+    print(f"\nManifest ({len(manifest)} rows) → {out}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -222,6 +256,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "validate-data": (cmd_validate_data, "Validate metadata and images (missing, corrupt, labels, duplicates)."),
     "dataset-info": (cmd_dataset_info, "Show dataset statistics, class balance and split information."),
     "assess-quality": (cmd_assess_quality, "Compute image quality metrics and write a quality report."),
+    "generate-variations": (cmd_generate_variations, "Generate degraded/enhanced images with a traceability manifest."),
 }
 
 
@@ -252,7 +287,11 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--output", help="Output CSV (default: dataset.metadata_csv).")
         sp.add_argument("--fetch-lesion-ids", action="store_true",
                         help="Look up lesion_id/patient_id per image via the public ISIC Archive API.")
-    elif name == "assess-quality":
+    if name in {"generate-variations", "predict", "experiment"}:
+        sp.add_argument("--max-images", type=int, help="Approximate image limit: stratified and lesion-aware, keeps ≥1 lesion per class, so it can exceed N.")
+        sp.add_argument("--conditions", nargs="+", help="Only these conditions (name or prefix); original is always kept.")
+        sp.add_argument("--force", action="store_true", help="Regenerate variation folders whose parameters changed.")
+    if name == "assess-quality":
         sp.add_argument("images", nargs="*", help="Image files or folders (default: the configured dataset).")
 
 
