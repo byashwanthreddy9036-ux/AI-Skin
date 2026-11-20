@@ -393,6 +393,48 @@ def cmd_experiment(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+def _load_run(cfg: AppConfig):
+    import json
+
+    import pandas as pd
+
+    from skin_research.experiment import ExperimentPaths
+
+    paths = ExperimentPaths.for_config(cfg)
+    if not paths.predictions.is_file():
+        raise FileNotFoundError(f"No predictions at {paths.predictions}. Run `skin-research experiment` first.")
+    run_info = json.loads(paths.run_info.read_text()) if paths.run_info.is_file() else {}
+    return paths, pd.read_csv(paths.predictions), run_info
+
+
+def cmd_evaluate(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Compute metrics, confidence intervals, paired comparisons and charts from saved predictions."""
+    import json
+
+    from skin_research.inference.model_loader import check_label_compatibility
+    from skin_research.pipeline import evaluate_and_report
+
+    paths, predictions, run_info = _load_run(cfg)
+    model_labels = (run_info.get("model") or {}).get("labels") or list(cfg.model.label_map)
+    compat = check_label_compatibility(model_labels, cfg.model.label_map, cfg.dataset.labels)
+    if not compat.ok:
+        raise ValueError(f"Refusing to compute metrics — label mapping incompatible: {compat.problems}")
+    outputs = evaluate_and_report(cfg, predictions, run_info)
+    run_info["outputs"] = outputs
+    paths.run_info.write_text(json.dumps(run_info, indent=2, default=str))
+    import pandas as pd
+
+    summary = pd.read_csv(outputs["metrics"]["summary"])
+    m = cfg.evaluation.primary_metric
+    cols = ["condition", "accuracy", m, f"{m}_ci_low", f"{m}_ci_high", "macro_f1", "macro_roc_auc", "ece"]
+    print(summary[cols].round(3).to_string(index=False))
+    print(f"\nTables → {paths.predictions_dir.parent.parent / 'reports' / cfg.experiment.name}")
+    print(f"Charts → {cfg.paths.charts_dir / cfg.experiment.name}")
+    if "report" in outputs:
+        print(f"Report → {outputs['report']}")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -405,6 +447,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "download-model": (cmd_download_model, "Download and verify the pretrained model weights (~16 MB)."),
     "predict": (cmd_predict, "Run the pretrained model on images or on the variations manifest."),
     "experiment": (cmd_experiment, "Run the full experiment (variations, inference, evaluation, report)."),
+    "evaluate": (cmd_evaluate, "Compute metrics, CIs, paired comparisons and charts from saved predictions."),
     "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 
