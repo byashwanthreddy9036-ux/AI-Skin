@@ -61,10 +61,13 @@ loader, but the tool warns about leakage when it is used with this model.
 
 ```
 src/skin_research/
-├── cli.py               # argparse CLI: doctor, validate-data, ..., report
+├── cli.py               # argparse CLI: doctor, validate-data, ..., report, demo
 ├── config.py            # YAML → typed dataclasses; paths resolved from project root
+├── experiment.py        # (added) end-to-end runner: split → variations → inference → evaluation
+├── pipeline.py          # (added) post-inference stages shared by experiment/evaluate/report
 ├── data/
-│   ├── metadata.py      # CSV schema, ISIC/HAM10000 → canonical metadata converters
+│   ├── download.py      # (added) ISIC dataset registry, sizes, confirmation, zip-slip-safe extraction
+│   ├── metadata.py      # CSV schema, ISIC/HAM10000 → canonical metadata converters, ISIC API lesion ids
 │   ├── loader.py        # lazy dataset iteration, group-aware splitting
 │   └── validation.py    # missing files, corrupt images, labels, duplicates
 ├── quality/
@@ -72,7 +75,8 @@ src/skin_research/
 │   └── assessment.py    # per-image quality table + summary
 ├── preprocessing/
 │   ├── degradation.py   # 8 configurable degradations × severity levels
-│   └── enhancement.py   # brightness/contrast correction, CLAHE, sharpening, denoising
+│   ├── enhancement.py   # brightness/contrast correction, CLAHE, sharpening, denoising, RL deblur
+│   └── variations.py    # (added) experimental conditions + traceable generation/manifest
 ├── inference/
 │   ├── model_loader.py  # ModelAdapter interface + EfficientNet adapter + registry
 │   └── predictor.py     # batched CPU inference → probabilities table
@@ -109,6 +113,20 @@ src/skin_research/
 Every generated image is recorded in a manifest with its source image ID,
 transformation and parameters, and ground-truth label. Original images are never
 written to.
+
+### Deviations from the suggested structure
+
+* The repository root *is* the project (`AI-Skin/` instead of `skin-image-quality-research/`).
+* Added `data/download.py`, `preprocessing/variations.py`, `experiment.py` and `pipeline.py` so that
+  downloading, condition generation, orchestration and post-processing each have one home instead of
+  being mixed into the loader or CLI.
+* `docs/` holds the three required documents plus this file.
+
+## Memory and performance
+
+Images are decoded lazily one source image at a time; variants are streamed straight into fixed-size
+inference batches. Measured on the target machine (6-core WSL2, CPU only): peak RSS ≈ 0.8 GB, ≈ 9–10
+images/s with batch 8 and 3 threads (more threads were slower under WSL2).
 
 ## Model adapter
 
