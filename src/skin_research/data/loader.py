@@ -31,12 +31,22 @@ def load_image(path: Path) -> np.ndarray:
 
 
 def save_image(image: np.ndarray, path: Path, fmt: str = "png") -> Path:
-    """Save an RGB array; refuses to overwrite an existing file."""
+    """Save an RGB array atomically; refuses to overwrite an existing file.
+
+    The image is written to a temporary file and renamed, so an interrupted run
+    never leaves a truncated image that a later run would reuse.
+    """
     path = path.with_suffix(f".{fmt}")
     if path.exists():
         raise FileExistsError(f"Refusing to overwrite existing image: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(image).save(path, format="PNG" if fmt == "png" else fmt.upper())
+    tmp = path.with_name(f".{path.name}.tmp")
+    if fmt == "png":
+        # compress_level=1 is several times faster than the default (6) and still lossless
+        Image.fromarray(image).save(tmp, format="PNG", compress_level=1)
+    else:
+        Image.fromarray(image).save(tmp, format=fmt.upper())
+    tmp.replace(path)
     return path
 
 
