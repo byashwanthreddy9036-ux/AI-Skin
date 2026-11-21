@@ -27,7 +27,8 @@ python -m skin_research.cli <command>     # same thing, after `source .venv/bin/
 | test the model on my own dermoscopy image | `uv run skin-research demo --image path/to/img.jpg --label mel` |
 | get predictions for a few images | `uv run skin-research predict img1.jpg img2.jpg` |
 | check image quality of some photos | `uv run skin-research assess-quality path/to/folder` |
-| run a short trial experiment (~1-5 min) | `uv run skin-research experiment --max-images 20 --conditions gaussian_blur enhance__clahe` |
+| run a short trial experiment (~1-5 min) | `uv run skin-research -e trial experiment --max-images 20 --conditions gaussian_blur enhance__clahe` |
+| browse the results in a website | `uv run skin-research build-site`, then `explorer.exe "$(wslpath -w outputs/site/index.html)"` |
 | run the full experiment (~30 min) | `uv run skin-research experiment` |
 | rebuild charts/report after editing report code | `uv run skin-research report` |
 | reproduce everything from scratch | `bash scripts/reproduce.sh` (or `--quick`) |
@@ -219,7 +220,7 @@ enhance__clahe             0.733
 statistics, charts and the report in one go.
 
 ```
-$ uv run skin-research experiment --max-images 7 --conditions gaussian_blur__moderate enhance__clahe
+$ uv run skin-research -e cheatsheet_demo experiment --max-images 7 --conditions gaussian_blur__moderate enhance__clahe
 Experiment 'cheatsheet_demo': 15 images × 3 conditions = 45 predictions in 15 s (8.57 img/s inference)
   report: .../outputs/reports/cheatsheet_demo/report.md
 
@@ -233,6 +234,9 @@ Experiment 'isic2018_val_quality': 193 images × 41 conditions = 7913 prediction
 | `--batch-size B` | lower it (e.g. 4) if memory is tight |
 | `--force` | needed after you change a degradation/enhancement setting in the config |
 | `--no-evaluate` | only generate images and predictions, skip statistics |
+
+Always add `-e <name>` before `experiment` for trial runs. Without it a trial replaces the full study's
+results (they can be restored by running the full `experiment` again; generated images are reused).
 
 ### `evaluate`: statistics from saved predictions
 **Use it:** to recompute metrics without re-running the model (seconds instead of 30 minutes).
@@ -252,6 +256,20 @@ gaussian_blur__moderate     0.533              0.500                     0.300  
 Report → .../outputs/reports/<experiment>/report.md
 Charts → .../outputs/charts/<experiment>
 ```
+
+### `build-site`: interactive explainer website
+**Use it:** after an experiment, to browse and show the results. It builds one self-contained page plus
+small image thumbnails in `outputs/site/`. Every number comes from the experiment's output files.
+
+```
+$ uv run skin-research build-site
+Website → .../outputs/site/index.html
+Open it in a browser, e.g. from WSL: explorer.exe "$(wslpath -w .../outputs/site/index.html)"
+```
+Sections: the answer, how the pipeline works, a lesion explorer (original vs any condition with the
+model's probabilities), all results (filter and sort), severity charts, enhancement charts, sensitivity per
+diagnosis, findings, commands with copy buttons, tests and a glossary. To share it, zip the
+`outputs/site` folder; it works offline.
 
 ### `demo`: one image, five versions
 **Use it:** to show someone what the project does in 10 seconds.
@@ -284,7 +302,8 @@ Your own image: `--image path.jpg --label mel` (the label is optional).
 
 | Option | Use |
 |---|---|
-| `-c path/to/config.yaml` | use a different config, e.g. a copy with another `experiment.name` so results don't overwrite each other |
+| `-e NAME` / `--experiment-name NAME` | write results under a different experiment name, so trial runs never overwrite the full study |
+| `-c path/to/config.yaml` | use a different config file |
 | `--log-level DEBUG` | show detailed logs when debugging |
 | `--version` | print version |
 | `-h` / `--help` | help for the CLI or for one command |

@@ -79,7 +79,14 @@ uv run pytest                                          # 72 tests incl. a real e
 
 The report is written to `outputs/reports/isic2018_val_quality/report.md`.
 
-For a fast trial run first: `uv run skin-research experiment --max-images 20 --conditions gaussian_blur underexposure enhance__clahe`.
+**Interactive website.** `uv run skin-research build-site` turns the results into a single-page site
+(`outputs/site/index.html`) with a lesion explorer that shows what the model saw under every condition,
+sortable results, severity and enhancement charts, per-diagnosis sensitivity, commands with copy buttons,
+the test suite and a glossary. Open it from WSL with
+`explorer.exe "$(wslpath -w outputs/site/index.html)"`, or copy the `outputs/site` folder to share it.
+
+For a fast trial run first: `uv run skin-research -e trial experiment --max-images 20 --conditions gaussian_blur underexposure enhance__clahe`
+(the `-e trial` keeps it from overwriting the full results).
 
 ## Dataset setup
 
@@ -172,8 +179,10 @@ See [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for real example output of every 
 | `evaluate` | Recompute metrics, CIs, paired tests and charts from saved predictions |
 | `report` | Regenerate the Markdown report |
 | `demo [--image PATH --label L \| --image-id ID]` | Milestone demo on one image (original, blur, dark, sharpened, CLAHE) |
+| `build-site [--output DIR]` | Interactive explainer website from the latest results → `outputs/site/index.html` |
 
-Global options: `--config PATH`, `--log-level DEBUG`. Conditions accept exact names
+Global options: `--config PATH`, `--log-level DEBUG`, `-e/--experiment-name NAME` (keeps trial runs
+separate from the main results, e.g. `uv run skin-research -e my_trial experiment --max-images 20`). Conditions accept exact names
 (`gaussian_blur__moderate`) or prefixes (`gaussian_blur`, `enhance__`); `original` is always included.
 
 ## Example output

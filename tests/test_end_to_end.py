@@ -48,3 +48,17 @@ def test_full_pipeline_on_real_images(tmp_path):
     report = Path(info["outputs"]["report"]).read_text()
     assert "## 7. Automated observations" in report
     assert Path(info["outputs"]["metrics"]["json"]).is_file()
+
+    # the explainer website builds from these real results
+    import json
+    import re
+
+    from skin_research.reporting.site import build_site
+
+    page = build_site(cfg)
+    html = page.read_text()
+    assert html.startswith("<!doctype html>") and "/*__SITE_DATA__*/" not in html
+    data = json.loads(re.search(r"const DATA = (\{.*?\});\n", html, re.S).group(1))
+    assert len(data["conditions"]) == 6 and data["examples"]
+    first = data["examples"][0]["conditions"]["original"]
+    assert (page.parent / first["img"]).is_file() and abs(sum(first["probs"]) - 1) < 1e-3
