@@ -98,12 +98,46 @@ def _observations(result: EvaluationResult, primary: str, alpha: float = 0.05) -
         if len(full):
             obs.append("Point estimates recovered ≥90% of the lost balanced accuracy for: "
                        + ", ".join(f"`{c}`" for c in full.index) + " (see CIs before generalising).")
+    # Rare classes dominate macro metrics: say so with the actual counts
+    pc = result.per_class
+    support = pc[pc["condition"] == "original"].set_index("label")["support"]
+    present = support[support > 0]
+    rare = present[present < 5]
+    if len(rare):
+        obs.append(f"Rare classes ({', '.join(f'{k}: {int(v)} image(s)' for k, v in rare.items())}) each carry "
+                   f"1/{len(present)} = {1 / len(present):.3f} of balanced accuracy and macro F1, so a single image "
+                   "flipping moves these metrics noticeably. Read macro metrics together with plain accuracy and the "
+                   "per-class table.")
+    # Melanoma sensitivity is the clinically most consequential number
+    if "mel" in set(pc["label"]):
+        mel = pc[pc["label"] == "mel"].set_index("condition")["recall"]
+        n_mel = int(support.get("mel", 0))
+        if n_mel:
+            worst = mel.drop("original").nsmallest(5)
+            obs.append(f"Melanoma sensitivity ({n_mel} melanomas): {_fmt(mel['original'])} on originals; lowest under "
+                       + ", ".join(f"`{c}` {_fmt(v)}" for c, v in worst.items())
+                       + ". Missed melanomas are a false-negative cancer outcome, the costliest error type.")
+    # Calibration direction and confidence as an error signal (derived, not boilerplate)
+    gap_o = base["mean_conf_correct"] - base["mean_conf_wrong"]
+    direction = "under-confident" if base["mean_confidence"] < base["accuracy"] else "over-confident"
+    obs.append(f"On original images the model is {direction}: mean top-1 confidence {_fmt(base['mean_confidence'])} "
+               f"vs accuracy {_fmt(base['accuracy'])} (ECE {_fmt(base['ece'])}).")
     conf = result.summary[["condition", "mean_conf_correct", "mean_conf_wrong"]].dropna()
     if len(conf):
-        gap = (conf["mean_conf_correct"] - conf["mean_conf_wrong"]).mean()
-        obs.append(f"Across conditions, correct predictions were on average {_fmt(gap)} more confident than "
-                   "wrong ones; wrong predictions under degradation are often still made with substantial "
-                   "confidence (see the confidence chart), which matters for reliability.")
+        gap = (conf["mean_conf_correct"] - conf["mean_conf_wrong"])
+        inverted = conf.loc[gap < 0, "condition"].tolist()
+        obs.append(f"Correct predictions were {_fmt(gap_o)} more confident than wrong ones on originals and "
+                   f"{_fmt(gap.mean())} on average across conditions; in {len(inverted)} of {len(conf)} conditions "
+                   "wrong predictions were on average *more* confident than correct ones. Confidence is therefore a "
+                   "weak signal for detecting degraded-image errors with this model.")
+    # Do the heuristic quality flags catch the damaging conditions?
+    damaging = s[(s.index != "original") & (s[primary] < base[primary] - 0.2)]
+    missed = damaging[damaging["questionable_fraction"] < 0.1]
+    if len(missed):
+        obs.append(f"The heuristic quality flags missed {len(missed)} of {len(damaging)} conditions that cut "
+                   f"{primary.replace('_', ' ')} by more than 0.2 (<10% of images flagged): "
+                   + ", ".join(f"`{c}`" for c in missed.index) + ". Simple no-reference metrics did not detect "
+                   "all quality problems that harmed the model.")
     return obs
 
 

@@ -176,7 +176,57 @@ Global options: `--config PATH`, `--log-level DEBUG`. Conditions accept exact na
 
 ## Example output
 
-<!-- RESULTS -->
+Results of `skin-research experiment` on the ISIC 2018 Validation set (193 images from 145 lesions,
+41 conditions, 7,913 real CPU inferences in 29 min at 8.6 img/s). Full report:
+`outputs/reports/isic2018_val_quality/report.md`.
+
+**First milestone (`demo --image-id ISIC_0034329`, a melanoma):**
+
+```
+               version  brightness  rms_contrast  laplacian_var predicted_label  confidence
+              original       0.740         0.183       1136.793             mel       0.895
+gaussian_blur_moderate       0.740         0.179         13.665              nv       0.376
+poor_lighting_moderate       0.393         0.126        567.198             mel       0.760
+             sharpened       0.740         0.186       3832.022             mel       0.855
+                 clahe       0.694         0.175       3885.031             mel       0.847
+```
+
+**Selected results** (balanced accuracy with 95% lesion-bootstrap CI; Δ vs original is paired):
+
+| Condition | Accuracy | Balanced acc. [95% CI] | Melanoma sensitivity |
+|---|---|---|---|
+| original | 0.870 | 0.874 [0.758, 0.929] | 0.76 |
+| gaussian_blur mild / severe | 0.762 / 0.642 | 0.688 / 0.359 | 0.14 / 0.00 |
+| underexposure mild / severe | 0.813 / 0.668 | 0.640 / 0.378 | 0.81 / 0.24 |
+| jpeg_compression severe | 0.653 | 0.308 | 0.14 |
+| enhance: brightness_correction | 0.829 | 0.860 (Δ −0.015, CI includes 0) | 0.86 |
+| enhance: CLAHE | 0.756 | 0.756 (Δ −0.118, CI below 0) | 0.67 |
+| enhance: denoise | 0.591 | 0.563 (Δ −0.311, CI below 0) | 0.10 |
+| underexposure moderate → brightness_correction | 0.808 | 0.742 (vs 0.512 degraded, CI above 0) | 0.67 |
+
+What the data shows for this model and sample (details and caveats in the report):
+
+1. **Degradation hurts, monotonically.** All 8 degradation types reduce balanced accuracy as severity
+   increases; 36 of 40 conditions are lower than original with a CI excluding 0.
+2. **Enhancing already-good images never helped.** No transformation beat the original; CLAHE, contrast
+   stretching and denoising made it significantly worse. The model expects images like its training data.
+3. **Targeted restoration can partly help.** Brightness correction recovered 63% of the balanced accuracy
+   lost to underexposure, and deblurring 26% of the loss to blur. Mismatched "fixes" (contrast stretch on
+   low-contrast, denoise on JPEG) made things worse.
+4. **Melanoma is the most fragile class.** Even mild blur cut melanoma sensitivity from 0.76 to 0.14; most
+   missed melanomas were predicted as benign nevi.
+5. **Confidence is a weak warning signal.** The model is under-confident (58% mean confidence at 87%
+   accuracy), and correct and wrong predictions have nearly identical confidence under degradation.
+6. **Simple quality metrics miss damaging problems.** The heuristic flags did not catch noise, JPEG or some
+   blur conditions that cut accuracy sharply (noise even *raises* the Laplacian "sharpness" score).
+
+With only 1 dermatofibroma and 3 vascular images, macro metrics swing by 0.143 per rare-class image; the
+larger ISIC Test set (1,512 images) would give much tighter estimates.
+
+![overview](docs/images/01_condition_overview.png)
+![severity](docs/images/02_severity.png)
+![enhancement](docs/images/03_enhancement.png)
+
 
 ## Project structure
 

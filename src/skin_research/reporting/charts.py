@@ -121,7 +121,7 @@ def severity_small_multiples(summary: pd.DataFrame, metric: str, path: Path) -> 
 def enhancement_comparison(summary: pd.DataFrame, restoration: pd.DataFrame, metric: str, path: Path) -> Path:
     """Left: enhancement of original images. Right: degraded vs degraded→enhanced."""
     _style()
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [1, 2]})
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.2), gridspec_kw={"width_ratios": [1, 2.2]})
     base = float(summary.loc[summary["condition"] == "original", metric].iloc[0])
 
     enh = summary[summary["group"].isin(["original", "enhancement"])]
@@ -144,12 +144,12 @@ def enhancement_comparison(summary: pd.DataFrame, restoration: pd.DataFrame, met
                 label="Degraded → enhanced", edgecolor=SURFACE)
         ax2.axhline(base, color=INK, linestyle="--", linewidth=1)
         ax2.text(-0.45, base + 0.01, f"original {base:.3f}", ha="left", va="bottom", fontsize=8)
-        names = [c.replace("__moderate", " (mod)").replace("+", "\n+ ") for c in restoration["condition"]]
-        ax2.set_xticks(x, names, fontsize=7)
+        names = [f"{d.split('__')[0]} → {e}" for d, e in zip(restoration["degraded_condition"], restoration["enhancement"])]
+        ax2.set_xticks(x, names, fontsize=7.5, rotation=35, ha="right")
         ax2.grid(axis="x", visible=False)
         ax2.set_ylim(0, 1)
-        ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2)
-        ax2.set_title("Can enhancement recover degraded images? (balanced accuracy)")
+        ax2.legend(loc="upper right", bbox_to_anchor=(1.0, 0.86), ncol=1)
+        ax2.set_title("Can enhancement recover degraded images? (moderate severity, balanced accuracy)")
     fig.tight_layout()
     return _save(fig, path)
 
