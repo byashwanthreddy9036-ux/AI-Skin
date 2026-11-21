@@ -454,6 +454,15 @@ def cmd_report(args: argparse.Namespace, cfg: AppConfig) -> int:
     return 0
 
 
+def cmd_build_site(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Build the interactive explainer website from the latest experiment results."""
+    from skin_research.reporting.site import build_site
+
+    page = build_site(cfg, cfg.resolve(args.output) if args.output else None)
+    print(f"Website → {page}\nOpen it in a browser, e.g. from WSL: explorer.exe \"$(wslpath -w {page})\"")
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 COMMANDS: dict[str, tuple[Handler, str]] = {
     "doctor": (cmd_doctor, "Check the environment, dependencies, data and model availability."),
@@ -468,6 +477,7 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "experiment": (cmd_experiment, "Run the full experiment (variations, inference, evaluation, report)."),
     "evaluate": (cmd_evaluate, "Compute metrics, CIs, paired comparisons and charts from saved predictions."),
     "report": (cmd_report, "Generate the Markdown research report from saved predictions."),
+    "build-site": (cmd_build_site, "Build the interactive explainer website from the latest results."),
     "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 
@@ -480,6 +490,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("-c", "--config", default=None, help="Path to YAML config (default: configs/config.yaml).")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("-e", "--experiment-name", default=None,
+                        help="Override experiment.name so trial runs never overwrite the main results.")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
     for name, (_, help_text) in COMMANDS.items():
         sp = sub.add_parser(name, help=help_text, description=help_text)
@@ -513,6 +525,8 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--image", help="Any image file (default: first image of the configured dataset).")
         sp.add_argument("--label", help="Ground-truth label for --image, if known.")
         sp.add_argument("--image-id", help="Pick a dataset image by id, e.g. ISIC_0034329.")
+    if name == "build-site":
+        sp.add_argument("--output", help="Output folder (default: outputs/site).")
     if name == "assess-quality":
         sp.add_argument("images", nargs="*", help="Image files or folders (default: the configured dataset).")
 
@@ -528,6 +542,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
+    if args.experiment_name:
+        cfg.experiment.name = args.experiment_name
+        cfg.raw["experiment"]["name"] = args.experiment_name
     setup_logging(args.log_level, cfg.paths.logs_dir / "skin_research.log")
     handler, _ = COMMANDS[args.command]
     try:

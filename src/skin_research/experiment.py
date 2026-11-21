@@ -61,6 +61,14 @@ def run_experiment(cfg: AppConfig, condition_names: list[str] | None = None, for
     """Run the full experiment and return the run-info record."""
     t_start = time.perf_counter()
     paths = ExperimentPaths.for_config(cfg)
+    if paths.run_info.is_file():
+        try:
+            previous = json.loads(paths.run_info.read_text())
+            log.warning("Overwriting previous results of experiment '%s' (%s predictions). Use "
+                        "--experiment-name to keep runs separate.", cfg.experiment.name,
+                        previous.get("n_predictions"))
+        except (OSError, json.JSONDecodeError):
+            pass
     paths.predictions_dir.mkdir(parents=True, exist_ok=True)
     set_global_seed(cfg.seed)
     save_config_snapshot(cfg, paths.predictions_dir / "config_used.yaml")
