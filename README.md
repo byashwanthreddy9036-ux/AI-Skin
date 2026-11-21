@@ -155,6 +155,8 @@ placeholder predictions. Details and the label mapping are in
 
 ## Commands
 
+See [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for real example output of every command, test commands and common errors.
+
 | Command | What it does |
 |---|---|
 | `doctor` | Python, packages, CPU/RAM/disk, CUDA, data and model availability |
@@ -288,6 +290,7 @@ Everything is in [`configs/config.yaml`](configs/config.yaml). Common edits:
 
 ## Documentation
 
+- [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md): every command and test command, when to use it, real example output, errors and fixes
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules, data flow, model adapter, model selection
 - [`docs/EXPERIMENT_METHODOLOGY.md`](docs/EXPERIMENT_METHODOLOGY.md): hypotheses, conditions, statistics, reproducibility
 - [`docs/MODEL_AND_DATASET.md`](docs/MODEL_AND_DATASET.md): sources, label mapping, licences, limitations
