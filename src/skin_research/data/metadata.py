@@ -16,6 +16,7 @@ patient_id     no        patient identifier → patient-level splitting
 
 from __future__ import annotations
 
+import http.client
 import json
 import time
 import urllib.error
@@ -115,13 +116,37 @@ def convert_ham10000_metadata(metadata_csv: Path, image_suffix: str = ".jpg") ->
     )
 
 
+def _fetch_one(image_id: str, timeout_s: float, retries: int = 3) -> dict[str, str | None] | None:
+    """One ISIC API lookup with retries; ``None`` if every attempt failed."""
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(ISIC_API_IMAGE_URL.format(isic_id=image_id),
+                                         headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                clinical = json.load(resp).get("metadata", {}).get("clinical", {})
+            return {"lesion_id": clinical.get("lesion_id"), "patient_id": clinical.get("patient_id")}
+        # OSError covers URLError, timeouts, connection resets; HTTPException covers dropped connections
+        except (OSError, http.client.HTTPException, json.JSONDecodeError) as exc:
+            log.warning("ISIC API lookup for %s failed (attempt %d/%d): %s", image_id, attempt, retries, exc)
+            time.sleep(2 ** attempt)
+    return None
+
+
+def _save_cache(cache_csv: Path, cached: dict[str, dict[str, str | None]]) -> None:
+    cache_csv.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache_csv.with_suffix(".tmp")
+    pd.DataFrame([{"image_id": k, **v} for k, v in cached.items()]).to_csv(tmp, index=False)
+    tmp.replace(cache_csv)
+
+
 def fetch_isic_lesion_ids(
-    image_ids: list[str], cache_csv: Path, delay_s: float = 0.1, timeout_s: float = 20
+    image_ids: list[str], cache_csv: Path, delay_s: float = 0.1, timeout_s: float = 20, save_every: int = 50
 ) -> pd.DataFrame:
     """Look up ``lesion_id`` (and ``patient_id`` if public) via the ISIC Archive API.
 
-    Results are cached in ``cache_csv`` so each image is queried at most once.
-    Network errors are logged and leave the identifier empty; they never abort.
+    Successful lookups are cached in ``cache_csv`` (saved every ``save_every`` lookups, so an
+    interruption loses little) and never repeated. Failed lookups are retried, logged and left
+    empty; they are not cached, so a later run tries them again. Network errors never abort.
     """
     cached: dict[str, dict[str, str | None]] = {}
     if cache_csv.is_file():
@@ -130,20 +155,20 @@ def fetch_isic_lesion_ids(
                   for r in prev.itertuples()}
     todo = [i for i in image_ids if i not in cached]
     log.info("ISIC API lookup: %d cached, %d to fetch", len(image_ids) - len(todo), len(todo))
+    failed = []
     for n, image_id in enumerate(todo, 1):
-        record: dict[str, str | None] = {"lesion_id": None, "patient_id": None}
-        try:
-            req = urllib.request.Request(ISIC_API_IMAGE_URL.format(isic_id=image_id),
-                                         headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                clinical = json.load(resp).get("metadata", {}).get("clinical", {})
-            record = {"lesion_id": clinical.get("lesion_id"), "patient_id": clinical.get("patient_id")}
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            log.warning("ISIC API lookup failed for %s: %s", image_id, exc)
-        cached[image_id] = record
+        record = _fetch_one(image_id, timeout_s)
+        if record is None:
+            failed.append(image_id)
+        else:
+            cached[image_id] = record
         if n % 25 == 0:
             log.info("  fetched %d/%d", n, len(todo))
+        if n % save_every == 0:
+            _save_cache(cache_csv, cached)
         time.sleep(delay_s)
-    cache_csv.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame([{"image_id": k, **v} for k, v in cached.items()]).to_csv(cache_csv, index=False)
-    return pd.DataFrame([{"image_id": i, **cached[i]} for i in image_ids])
+    _save_cache(cache_csv, cached)
+    if failed:
+        log.warning("%d lookup(s) failed and were left empty (rerun to retry): %s", len(failed), failed[:10])
+    empty = {"lesion_id": None, "patient_id": None}
+    return pd.DataFrame([{"image_id": i, **cached.get(i, empty)} for i in image_ids])

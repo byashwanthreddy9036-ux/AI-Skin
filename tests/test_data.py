@@ -101,3 +101,29 @@ def test_zip_slip_is_rejected(tmp_path):
     with pytest.raises(RuntimeError):
         safe_extract(archive, tmp_path / "out")
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_lesion_lookup_survives_dropped_connections(tmp_path, monkeypatch):
+    import http.client
+    import io
+    import json as _json
+
+    from skin_research.data import metadata as md
+
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout):
+        calls["n"] += 1
+        if "BAD" in req.full_url:
+            raise http.client.RemoteDisconnected("Remote end closed connection without response")
+        body = _json.dumps({"metadata": {"clinical": {"lesion_id": "IL_1"}}}).encode()
+        return io.BytesIO(body)
+
+    monkeypatch.setattr(md.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(md.time, "sleep", lambda s: None)
+    cache = tmp_path / "cache.csv"
+    out = md.fetch_isic_lesion_ids(["ISIC_OK", "ISIC_BAD"], cache, delay_s=0)
+    assert out.set_index("image_id").loc["ISIC_OK", "lesion_id"] == "IL_1"
+    assert pd.isna(out.set_index("image_id").loc["ISIC_BAD", "lesion_id"])
+    cached = pd.read_csv(cache)
+    assert list(cached["image_id"]) == ["ISIC_OK"]  # failures are not cached, so a rerun retries them
