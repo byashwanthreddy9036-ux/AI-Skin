@@ -211,18 +211,41 @@ def config_from_dict(data: dict[str, Any], root: Path, source_file: Path | None 
     )
 
 
-def load_config(path: str | Path | None = None) -> AppConfig:
-    """Load the YAML configuration (default: ``configs/config.yaml`` in the project root)."""
-    root = find_project_root()
-    config_path = Path(path) if path else root / DEFAULT_CONFIG_NAME
-    if not config_path.is_absolute():
-        config_path = (Path.cwd() / config_path) if config_path.exists() else root / config_path
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge ``override`` into a copy of ``base`` (mappings merge, other values replace)."""
+    out = copy.deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = copy.deepcopy(value)
+    return out
+
+
+def _read_yaml(config_path: Path, seen: tuple[Path, ...] = ()) -> dict[str, Any]:
+    """Read a YAML config, resolving ``extends: <file>`` (relative to this file) recursively."""
+    if config_path in seen:
+        raise ConfigError(f"Circular 'extends' chain: {' -> '.join(map(str, (*seen, config_path)))}")
     if not config_path.is_file():
         raise ConfigError(f"Config file not found: {config_path}")
     with config_path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ConfigError(f"Config file {config_path} must contain a YAML mapping.")
+    parent = data.pop("extends", None)
+    if parent:
+        base = _read_yaml((config_path.parent / parent).resolve(), (*seen, config_path))
+        data = deep_merge(base, data)
+    return data
+
+
+def load_config(path: str | Path | None = None) -> AppConfig:
+    """Load the YAML configuration (default: ``configs/config.yaml`` in the project root)."""
+    root = find_project_root()
+    config_path = Path(path) if path else root / DEFAULT_CONFIG_NAME
+    if not config_path.is_absolute():
+        config_path = (Path.cwd() / config_path) if config_path.exists() else root / config_path
+    data = _read_yaml(config_path.resolve())
     return config_from_dict(data, root=root, source_file=config_path.resolve())
 
 

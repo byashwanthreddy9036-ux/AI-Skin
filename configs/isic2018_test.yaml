@@ -1,0 +1,16 @@
+# ISIC 2018 Task 3 Test set (1,512 held-out images). Inherits every setting from
+# config.yaml (model, degradations, enhancements, conditions, statistics) and only
+# changes the data and the experiment name, so the two studies stay comparable.
+#   uv run skin-research download-data --dataset isic2018_test
+#   uv run skin-research prepare-data --dataset isic2018_test --fetch-lesion-ids \
+#       --output data/processed/isic2018_test_metadata.csv
+#   uv run skin-research -c configs/isic2018_test.yaml experiment
+extends: config.yaml
+
+dataset:
+  name: isic2018_test
+  metadata_csv: data/processed/isic2018_test_metadata.csv
+  image_root: data/raw/isic2018_test/ISIC2018_Task3_Test_Input
+
+experiment:
+  name: isic2018_test_quality
