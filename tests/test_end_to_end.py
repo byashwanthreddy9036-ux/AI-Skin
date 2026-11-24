@@ -53,16 +53,25 @@ def test_full_pipeline_on_real_images(tmp_path):
     assert "## 7. Automated observations" in report
     assert Path(info["outputs"]["metrics"]["json"]).is_file()
 
-    # the explainer website builds from these real results
-    import json
+    # the presentation website exports these real results (into a temporary folder)
     import re
 
-    from skin_research.reporting.site import build_site
+    import yaml
 
-    page = build_site(cfg)
-    html = page.read_text()
-    assert html.startswith("<!doctype html>") and "/*__SITE_DATA__*/" not in html
-    data = json.loads(re.search(r"const DATA = (\{.*?\});\n", html, re.S).group(1))
-    assert len(data["conditions"]) == 6 and data["examples"]
-    first = data["examples"][0]["conditions"]["original"]
-    assert (page.parent / first["img"]).is_file() and abs(sum(first["probs"]) - 1) < 1e-3
+    from skin_research.config import save_config_snapshot
+    from skin_research.website.export import build_website
+
+    cfg_file = save_config_snapshot(cfg, tmp_path / "smoke.yaml")
+    site_dir = tmp_path / "site"
+    (tmp_path / "website.yaml").write_text(yaml.safe_dump({
+        "output_dir": str(site_dir), "primary": "smoke",
+        "experiments": [{"key": "smoke", "label": "Smoke run", "config": str(cfg_file)}]}))
+    summary = build_website(tmp_path / "website.yaml")
+    assert summary["experiments"] == {"smoke": "complete"} and summary["lesions"]
+    text = (site_dir / "data" / "site-data.js").read_text()
+    data = json.loads(re.search(r"window\.SITE_DATA = (\{.*\});\s*$", text, re.S).group(1))
+    les = data["samples"]["lesions"][0]
+    row = pred[(pred.image_id == les["id"]) & (pred.condition == "original")].iloc[0]
+    assert les["conditions"]["original"]["pred"] == row["predicted_label"]
+    assert (site_dir / les["conditions"]["original"]["img"]).is_file()
+    assert (site_dir / "data" / "SAMPLES.md").is_file()

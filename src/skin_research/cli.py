@@ -10,6 +10,7 @@ import argparse
 import shutil
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from skin_research import __version__
 from skin_research.config import AppConfig, ConfigError, load_config
@@ -455,11 +456,36 @@ def cmd_report(args: argparse.Namespace, cfg: AppConfig) -> int:
 
 
 def cmd_build_site(args: argparse.Namespace, cfg: AppConfig) -> int:
-    """Build the interactive explainer website from the latest experiment results."""
-    from skin_research.reporting.site import build_site
+    """Export experiment outputs into the presentation website (website/data, website/assets)."""
+    from skin_research.website.export import build_website
 
-    page = build_site(cfg, cfg.resolve(args.output) if args.output else None)
-    print(f"Website → {page}\nOpen it in a browser, e.g. from WSL: explorer.exe \"$(wslpath -w {page})\"")
+    out = cfg.resolve(args.output) if args.output else None
+    summary = build_website(args.website_config, out)
+    site = Path(summary["output_dir"])
+    print(f"Website data written to {site}/data and {summary['images']} images to {site}/assets/samples")
+    for key, state in summary["experiments"].items():
+        print(f"  experiment {key:<12} {state}")
+    print(f"  curated cases: {summary['stories']}  lesions: {', '.join(summary['lesions'])}")
+    if summary["missing_stories"]:
+        print(f"  no qualifying image for: {', '.join(summary['missing_stories'])}")
+    print(f"\nOpen {site / 'index.html'} in a browser, or run: uv run skin-research serve-site")
+    return 0
+
+
+def cmd_serve_site(args: argparse.Namespace, cfg: AppConfig) -> int:
+    """Serve the website on http://127.0.0.1:<port> (local only)."""
+    import functools
+    import http.server
+
+    from skin_research.website.export import load_website_config
+
+    site = load_website_config(args.website_config).output_dir
+    if not (site / "data" / "site-data.js").is_file():
+        raise FileNotFoundError(f"{site}/data/site-data.js not found. Run `skin-research build-site` first.")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
+    with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler) as httpd:
+        print(f"Serving {site} at http://127.0.0.1:{args.port}/  (Ctrl+C to stop)")
+        httpd.serve_forever()
     return 0
 
 
@@ -477,7 +503,8 @@ COMMANDS: dict[str, tuple[Handler, str]] = {
     "experiment": (cmd_experiment, "Run the full experiment (variations, inference, evaluation, report)."),
     "evaluate": (cmd_evaluate, "Compute metrics, CIs, paired comparisons and charts from saved predictions."),
     "report": (cmd_report, "Generate the Markdown research report from saved predictions."),
-    "build-site": (cmd_build_site, "Build the interactive explainer website from the latest results."),
+    "build-site": (cmd_build_site, "Export experiment results into the presentation website (website/)."),
+    "serve-site": (cmd_serve_site, "Serve the presentation website locally at http://127.0.0.1:8000."),
     "demo": (cmd_demo, "One-image milestone: original/blurred/dark/enhanced versions and their predictions."),
 }
 
@@ -525,8 +552,12 @@ def _add_command_args(name: str, sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--image", help="Any image file (default: first image of the configured dataset).")
         sp.add_argument("--label", help="Ground-truth label for --image, if known.")
         sp.add_argument("--image-id", help="Pick a dataset image by id, e.g. ISIC_0034329.")
+    if name in {"build-site", "serve-site"}:
+        sp.add_argument("--website-config", default=None, help="Website settings (default: configs/website.yaml).")
     if name == "build-site":
-        sp.add_argument("--output", help="Output folder (default: outputs/site).")
+        sp.add_argument("--output", help="Website folder to write into (default: output_dir in website.yaml).")
+    if name == "serve-site":
+        sp.add_argument("--port", type=int, default=8000, help="Port (default 8000).")
     if name == "assess-quality":
         sp.add_argument("images", nargs="*", help="Image files or folders (default: the configured dataset).")
 

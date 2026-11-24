@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Developer tool: shows the site at an exact phone width (?w=375) for screenshots and the
+     responsive self-test (?selftest), because headless browsers cannot open windows that narrow. -->
+<html lang="en"><head><meta charset="utf-8"><title>Phone-width preview</title>
+<style>body{margin:0;background:#888}iframe{border:0;display:block;background:#fff}</style></head>
+<body>
+<iframe id="f" title="site at phone width"></iframe>
+<script>
+  const q = new URLSearchParams(location.search);
+  const f = document.getElementById("f");
+  f.width = q.get("w") || 375; f.height = q.get("h") || 2400;
+  f.src = "index.html" + (q.has("selftest") ? "?selftest" : "") + (location.hash || "#overview");
+  if (q.has("selftest")) {
+    const poll = setInterval(() => {
+      const r = f.contentDocument && f.contentDocument.getElementById("selftest-result");
+      if (r) { clearInterval(poll); const p = document.createElement("pre"); p.id = "selftest-result"; p.textContent = r.textContent; document.body.appendChild(p); }
+    }, 200);
+  }
+</script></body></html>

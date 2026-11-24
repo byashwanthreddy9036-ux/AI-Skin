@@ -1,0 +1,24 @@
+# Presentation website settings, read by `skin-research build-site`.
+# The website only READS experiment outputs; it never changes data, models or results.
+# Paths are relative to the project root.
+
+output_dir: website              # frontend folder; data → <output_dir>/data, images → <output_dir>/assets/samples
+
+# Experiments shown on the site, in display order. Each points at the config that produced it.
+# An experiment that is missing, running, failed or incomplete is shown with its status, never as results.
+experiments:
+  - key: validation
+    label: ISIC 2018 Validation
+    config: configs/config.yaml
+  - key: test
+    label: ISIC 2018 Test
+    config: configs/isic2018_test.yaml
+
+# Experiment whose saved images and predictions feed the Image Lab, Prediction Explorer and gallery.
+primary: validation
+
+samples:
+  max_lesions: 8                 # lesions exported for the Image Lab (picked by rules from real predictions)
+  image_long_side: 520           # display images (JPEG) for side-by-side and slider comparisons
+  thumb_long_side: 160           # small thumbnails for selectors and the gallery
+  jpeg_quality: 86

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skin Lesion Image Quality &amp; AI Reliability</title>
+<meta name="description" content="Interactive research presentation: how skin-lesion photo quality affects a pretrained AI classifier, and whether classic image enhancement recovers it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Manrope:wght@600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#overview">Skin<span>AI</span> Quality</a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#overview"><span class="n">1</span>Overview</a>
+      <a href="#how"><span class="n">2</span>How It Works</a>
+      <a href="#lab"><span class="n">3</span>Image Lab</a>
+      <a href="#explorer"><span class="n">4</span>Prediction Explorer</a>
+      <a href="#results"><span class="n">5</span>Results</a>
+      <a href="#about"><span class="n">6</span>About</a>
+    </nav>
+    <button class="btn sm" type="button" data-tour>▶ Guided tour</button>
+  </div>
+</header>
+
+<main>
+  <section id="s-overview" aria-label="Overview"></section>
+  <section id="s-how" aria-label="How it works" hidden></section>
+  <section id="s-lab" aria-label="Interactive image lab" hidden></section>
+  <section id="s-explorer" aria-label="AI prediction explorer" hidden></section>
+  <section id="s-results" aria-label="Research results" hidden></section>
+  <section id="s-about" aria-label="About the research" hidden></section>
+</main>
+
+<footer>
+  <div class="wrap stack" style="gap:6px">
+    <span>Educational research prototype. Not a medical device; not for diagnosis.</span>
+    <span>Images: ISIC 2018 Task 3 / HAM10000 (CC-BY-NC), International Skin Imaging Collaboration. Model:
+      adeIaide/skin-lesion-7class-efficientnet (CC-BY-NC-4.0).</span>
+    <span id="generated"></span>
+  </div>
+</footer>
+
+<div class="tour" id="tour" hidden role="dialog" aria-modal="true" aria-label="Guided tour">
+  <div class="tour-top">
+    <b>Guided tour</b>
+    <div class="tour-progress" id="tour-progress" aria-hidden="true"></div>
+    <button class="btn ghost sm" type="button" id="tour-close">Exit tour ✕</button>
+  </div>
+  <div class="tour-body" id="tour-body" aria-live="polite"></div>
+  <div class="tour-nav">
+    <button class="btn ghost" type="button" id="tour-prev">← Previous</button>
+    <span class="count" id="tour-count"></span>
+    <button class="btn" type="button" id="tour-next">Next →</button>
+  </div>
+</div>
+<div id="tip" hidden></div>
+
+<noscript><p class="wrap">This presentation needs JavaScript.</p></noscript>
+<script src="data/site-data.js"></script>
+<script>
+  if (!window.SITE_DATA) {
+    document.querySelector("main").innerHTML = '<div class="wrap" style="padding:60px 0"><h2>No presentation data yet</h2>' +
+      '<p>Run <code>uv run skin-research build-site</code> in the project folder, then reload this page.</p></div>';
+    throw new Error("website/data/site-data.js is missing");
+  }
+</script>
+<script src="js/util.js"></script>
+<script src="js/content.js"></script>
+<script src="js/overview.js"></script>
+<script src="js/lab.js"></script>
+<script src="js/explorer.js"></script>
+<script src="js/results.js"></script>
+<script src="js/about.js"></script>
+<script src="js/tour.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

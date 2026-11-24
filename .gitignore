@@ -33,3 +33,7 @@ outputs/**/*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Generated presentation-website data and images (rebuilt by `skin-research build-site`)
+website/data/
+website/assets/samples/
