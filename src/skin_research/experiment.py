@@ -15,6 +15,7 @@ Pipeline (one model instance, one preprocessing pipeline, for every condition):
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +35,8 @@ log = get_logger(__name__)
 
 PREDICTION_FILE = "predictions.csv"
 RUN_INFO_FILE = "run_info.json"
+STATUS_FILE = "status.json"
+STATUS_EVERY_BATCHES = 25
 
 
 @dataclass
@@ -55,12 +58,42 @@ class ExperimentPaths:
     def run_info(self) -> Path:
         return self.predictions_dir / RUN_INFO_FILE
 
+    @property
+    def status(self) -> Path:
+        return self.predictions_dir / STATUS_FILE
+
+
+def write_status(path: Path, **fields: Any) -> None:
+    """Record run state (running / complete / failed) so other tools never mistake a
+    partial run for a finished one. Written atomically."""
+    from datetime import datetime, timezone
+
+    record = {**fields, "updated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(record, indent=2, default=str))
+    tmp.replace(path)
+
 
 def run_experiment(cfg: AppConfig, condition_names: list[str] | None = None, force: bool = False,
                    evaluate: bool = True) -> dict[str, Any]:
     """Run the full experiment and return the run-info record."""
-    t_start = time.perf_counter()
     paths = ExperimentPaths.for_config(cfg)
+    paths.predictions_dir.mkdir(parents=True, exist_ok=True)
+    started = {"experiment": cfg.experiment.name, "dataset": cfg.dataset.name, "pid": os.getpid()}
+    write_status(paths.status, state="running", stage="starting", done=0, total=None, **started)
+    try:
+        info = _run(cfg, paths, condition_names, force, evaluate, started)
+    except BaseException as exc:
+        write_status(paths.status, state="failed", error=f"{type(exc).__name__}: {exc}", **started)
+        raise
+    write_status(paths.status, state="complete", done=info["n_predictions"], total=info["n_predictions"],
+                 n_images=info["n_images"], n_conditions=info["n_conditions"], **started)
+    return info
+
+
+def _run(cfg: AppConfig, paths: ExperimentPaths, condition_names: list[str] | None, force: bool,
+         evaluate: bool, started: dict[str, Any]) -> dict[str, Any]:
+    t_start = time.perf_counter()
     if paths.run_info.is_file():
         try:
             previous = json.loads(paths.run_info.read_text())
@@ -69,7 +102,6 @@ def run_experiment(cfg: AppConfig, condition_names: list[str] | None = None, for
                         previous.get("n_predictions"))
         except (OSError, json.JSONDecodeError):
             pass
-    paths.predictions_dir.mkdir(parents=True, exist_ok=True)
     set_global_seed(cfg.seed)
     save_config_snapshot(cfg, paths.predictions_dir / "config_used.yaml")
 
@@ -97,8 +129,13 @@ def run_experiment(cfg: AppConfig, condition_names: list[str] | None = None, for
     log.info("Step 3/5: %d conditions × %d images = %d inferences (batch %d)",
              len(conditions), len(table), total, cfg.model.batch_size)
     frames = []
-    for frame in predictor.predict_stream(iter_variations(cfg, table, conditions, force=force)):
+    done = 0
+    for i, frame in enumerate(predictor.predict_stream(iter_variations(cfg, table, conditions, force=force)), 1):
         frames.append(frame)
+        done += len(frame)
+        if i % STATUS_EVERY_BATCHES == 0:
+            write_status(paths.status, state="running", stage="inference", done=done, total=total,
+                         n_images=len(table), n_conditions=len(conditions), **started)
     predictions = pd.concat(frames, ignore_index=True)
 
     # 5. persist
@@ -134,6 +171,7 @@ def run_experiment(cfg: AppConfig, condition_names: list[str] | None = None, for
 
     if evaluate and compat.ok:
         log.info("Step 5/5: evaluating, charting and reporting")
+        write_status(paths.status, state="running", stage="evaluation", done=total, total=total, **started)
         from skin_research.pipeline import evaluate_and_report
 
         run_info["outputs"] = evaluate_and_report(cfg, predictions, run_info)

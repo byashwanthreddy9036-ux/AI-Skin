@@ -64,3 +64,18 @@ def test_exact_name_does_not_pull_in_combinations(tmp_config):
     assert exact == {"original", "gaussian_blur__moderate"}
     prefix = {c.name for c in select_conditions(conds, ["gaussian_blur"])}
     assert {"gaussian_blur__mild", "gaussian_blur__severe", "gaussian_blur__moderate+sharpen"} <= prefix
+
+
+def test_failed_run_is_recorded_as_failed(tmp_config, monkeypatch):
+    import json as _json
+
+    from skin_research import experiment
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated crash")
+
+    monkeypatch.setattr(experiment, "prepare_dataset", boom)
+    with pytest.raises(RuntimeError):
+        experiment.run_experiment(tmp_config)
+    status = _json.loads(experiment.ExperimentPaths.for_config(tmp_config).status.read_text())
+    assert status["state"] == "failed" and "simulated crash" in status["error"]

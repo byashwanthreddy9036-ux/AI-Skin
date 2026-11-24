@@ -6,6 +6,8 @@ not available locally.
 
 from pathlib import Path
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -36,6 +38,8 @@ def test_full_pipeline_on_real_images(tmp_path):
                                 "enhance__clahe", "underexposure__moderate+brightness_correction"])
     pred = pd.read_csv(cfg.paths.predictions_dir / "smoke" / "predictions.csv")
     assert info["label_compatibility"]["ok"]
+    status = json.loads((cfg.paths.predictions_dir / "smoke" / "status.json").read_text())
+    assert status["state"] == "complete" and status["done"] == status["total"] == len(pred)
     assert set(pred["group"]) == {"original", "degradation", "enhancement", "degrade_enhance"}
     assert len(pred) == info["n_images"] * 6
     probs = pred[[c for c in pred if c.startswith("prob_")]]
