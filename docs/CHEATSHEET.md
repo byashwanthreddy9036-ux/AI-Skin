@@ -28,7 +28,8 @@ python -m skin_research.cli <command>     # same thing, after `source .venv/bin/
 | get predictions for a few images | `uv run skin-research predict img1.jpg img2.jpg` |
 | check image quality of some photos | `uv run skin-research assess-quality path/to/folder` |
 | run a short trial experiment (~1-5 min) | `uv run skin-research -e trial experiment --max-images 20 --conditions gaussian_blur enhance__clahe` |
-| browse the results in a website | `uv run skin-research build-site`, then `explorer.exe "$(wslpath -w outputs/site/index.html)"` |
+| browse or present the results in a website | `uv run skin-research build-site`, then `uv run skin-research serve-site` → http://127.0.0.1:8000 |
+| check the website in a real browser | `uv run python scripts/check_website.py` |
 | run the full experiment (~30 min) | `uv run skin-research experiment` |
 | rebuild charts/report after editing report code | `uv run skin-research report` |
 | reproduce everything from scratch | `bash scripts/reproduce.sh` (or `--quick`) |
@@ -257,19 +258,30 @@ Report → .../outputs/reports/<experiment>/report.md
 Charts → .../outputs/charts/<experiment>
 ```
 
-### `build-site`: interactive explainer website
-**Use it:** after an experiment, to browse and show the results. It builds one self-contained page plus
-small image thumbnails in `outputs/site/`. Every number comes from the experiment's output files.
+### `build-site` and `serve-site`: presentation website
+**Use them:** after an experiment finishes, to present the results. `build-site` reads the experiment outputs
+(never changes them) and writes `website/data/site-data.js`, `website/data/SAMPLES.md` and display images in
+`website/assets/samples/`. Experiments that are not finished appear with their status, not with numbers.
 
 ```
 $ uv run skin-research build-site
-Website → .../outputs/site/index.html
-Open it in a browser, e.g. from WSL: explorer.exe "$(wslpath -w .../outputs/site/index.html)"
+Website data written to .../website/data and 336 images to .../website/assets/samples
+  experiment validation   complete
+  experiment test         not_prepared
+  curated cases: 8  lesions: ISIC_0034329, ISIC_0034446, ISIC_0034477, ISIC_0034402, ISIC_0034394, ISIC_0034398, ISIC_0034492, ISIC_0034376
+
+Open .../website/index.html in a browser, or run: uv run skin-research serve-site
+
+$ uv run skin-research serve-site
+Serving .../website at http://127.0.0.1:8000/  (Ctrl+C to stop)
+
+$ uv run python scripts/check_website.py
+width  1440px: PASS  checks=1500 lab_combinations=320 tour_slides=7 images=336
+width   768px: PASS  checks=1500 lab_combinations=320 tour_slides=7 images=336
+width   375px: PASS  checks=1500 lab_combinations=320 tour_slides=7 images=336
 ```
-Sections: the answer, how the pipeline works, a lesion explorer (original vs any condition with the
-model's probabilities), all results (filter and sort), severity charts, enhancement charts, sensitivity per
-diagnosis, findings, commands with copy buttons, tests and a glossary. To share it, zip the
-`outputs/site` folder; it works offline.
+Which experiments appear is set in `configs/website.yaml`. Details: `website/README.md`; demo scripts:
+`website/PRESENTATION_GUIDE.md`.
 
 ### `demo`: one image, five versions
 **Use it:** to show someone what the project does in 10 seconds.

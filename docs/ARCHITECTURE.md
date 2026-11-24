@@ -128,6 +128,13 @@ Images are decoded lazily one source image at a time; variants are streamed stra
 inference batches. Measured on the target machine (6-core WSL2, CPU only): peak RSS ≈ 0.8 GB, ≈ 9–10
 images/s with batch 8 and 3 threads (more threads were slower under WSL2).
 
+## Presentation website
+
+`src/skin_research/website/export.py` (`skin-research build-site`) reads finished experiment outputs and writes
+presentation data into `website/` (static HTML/CSS/JS, no framework). It exports an experiment's numbers only
+when its outputs are verifiably complete (`status.json`, prediction counts, metric tables, full dataset), so a
+running or partial experiment is shown as a status, never as results. See `website/README.md`.
+
 ## Model adapter
 
 `ModelAdapter` defines `labels`, `preprocess(images)`, `predict_proba(batch)` and

@@ -79,11 +79,12 @@ uv run pytest                                          # 72 tests incl. a real e
 
 The report is written to `outputs/reports/isic2018_val_quality/report.md`.
 
-**Interactive website.** `uv run skin-research build-site` turns the results into a single-page site
-(`outputs/site/index.html`) with a lesion explorer that shows what the model saw under every condition,
-sortable results, severity and enhancement charts, per-diagnosis sensitivity, commands with copy buttons,
-the test suite and a glossary. Open it from WSL with
-`explorer.exe "$(wslpath -w outputs/site/index.html)"`, or copy the `outputs/site` folder to share it.
+**Interactive presentation website.** `uv run skin-research build-site` exports the results into
+[`website/`](website/README.md), a six-section presentation with an Image Lab (real photos, every
+transformation and strength, before/after slider, the AI's predictions), a Prediction Explorer, question-led
+result charts, background on the methods and a guided tour for presenting. Start it with
+`uv run skin-research serve-site` (http://127.0.0.1:8000) or open `website/index.html`. See
+[`website/PRESENTATION_GUIDE.md`](website/PRESENTATION_GUIDE.md) for 5- and 10-minute demos.
 
 For a fast trial run first: `uv run skin-research -e trial experiment --max-images 20 --conditions gaussian_blur underexposure enhance__clahe`
 (the `-e trial` keeps it from overwriting the full results).
@@ -179,7 +180,8 @@ See [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for real example output of every 
 | `evaluate` | Recompute metrics, CIs, paired tests and charts from saved predictions |
 | `report` | Regenerate the Markdown report |
 | `demo [--image PATH --label L \| --image-id ID]` | Milestone demo on one image (original, blur, dark, sharpened, CLAHE) |
-| `build-site [--output DIR]` | Interactive explainer website from the latest results → `outputs/site/index.html` |
+| `build-site [--website-config F] [--output DIR]` | Export results into the presentation website (`website/data`, `website/assets`) |
+| `serve-site [--port 8000]` | Serve the website locally at http://127.0.0.1:8000 |
 
 Global options: `--config PATH`, `--log-level DEBUG`, `-e/--experiment-name NAME` (keeps trial runs
 separate from the main results, e.g. `uv run skin-research -e my_trial experiment --max-images 20`). Conditions accept exact names
@@ -299,6 +301,8 @@ Everything is in [`configs/config.yaml`](configs/config.yaml). Common edits:
 
 ## Documentation
 
+- [`website/README.md`](website/README.md): the presentation website, where each displayed number comes from, image IDs used
+- [`website/PRESENTATION_GUIDE.md`](website/PRESENTATION_GUIDE.md): how to demo the project in 5 or 10 minutes
 - [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md): every command and test command, when to use it, real example output, errors and fixes
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules, data flow, model adapter, model selection
 - [`docs/EXPERIMENT_METHODOLOGY.md`](docs/EXPERIMENT_METHODOLOGY.md): hypotheses, conditions, statistics, reproducibility
