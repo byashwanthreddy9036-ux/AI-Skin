@@ -283,7 +283,7 @@ table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nu
 .qchart h3 { font-size: 1.25rem; }
 .qchart .answer { background: var(--surface-2); border-radius: 8px; padding: 10px 14px; font-size: 0.95rem; }
 .qchart .answer b { color: var(--ink); }
-.qchart .src { font-size: 0.75rem; color: var(--ink-3); }
+.qchart .src { font-size: 0.75rem; color: var(--ink-3); overflow-wrap: anywhere; }
 .qchart .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .charts-grid { display: grid; gap: 22px; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.82rem; color: var(--ink-2); }
